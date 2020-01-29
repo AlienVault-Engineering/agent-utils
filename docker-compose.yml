@@ -1,0 +1,12 @@
+version: '2'
+services:
+
+  av-agent-utils-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: av-agent-utils-test:latest
+    tty: true
+    stdin_open: true
+    volumes:
+      - .:/av-agent-utils
