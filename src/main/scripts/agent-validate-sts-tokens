@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+
+import optparse
+import sys
+
+from av_agent_utils import okta_login, sts
+
+if __name__ == '__main__':
+    parser = optparse.OptionParser()
+    parser.add_option('--config', '-c', help='file with agent config json doc in it')
+    parser.add_option('--aws-access-key-id', '-k', help='aws access key id')
+    parser.add_option('--aws-secret_access_key', '-s', help='aws secret access key')
+    parser.add_option('--aws-session-token', '-t', help='aws session token')
+    options, args = parser.parse_args()
+
+    if options.config:
+        results = sts.check_sts_token_by_config(options.config)
+    elif options.aws_access_key_id and options.aws_secret_access_key and options.aws_session_token:
+        results = sts.check_sts_token_by_key(
+            aws_access_key_id=options.aws_access_key_id,
+            aws_secret_access_key=options.aws_secret_access_key,
+            aws_session_token=options.aws_session_token,
+        )
+    else:
+        print('You must supply a source, either config json file, or aws key, secret and token')
+        sys.exit(1)
+
+    if results['status'] == 'success':
+        r = results['response']
+        for k in ['UserId', 'Account', 'Arn']:
+            print(f"{k}: {r[k]}")
+    else:
+        print('Error!')
+        print(f'Details: {results["detail"]}')
+

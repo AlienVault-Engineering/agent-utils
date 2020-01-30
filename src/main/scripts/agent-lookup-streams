@@ -1,64 +1,16 @@
 #!/usr/bin/env python3
 
-import botocore.errorfactory
-import boto3
 import optparse
 import os
-import functools
 import json
 import sys
-import time
 
-import gimme_aws_creds.main
-import gimme_aws_creds.ui
+from av_agent_utils import okta_login, kinesis
 
 
 cache_file = '/tmp/agent_lookup_customers.cache'
 cache = {}
-
-
-parser = optparse.OptionParser()
-parser.add_option('--infile', '-i', help="file with list of control node streams, one per line")
-parser.add_option('--outfile', '-o', default='-', help="output file with results in CSV format (defaults to stdout)")
-parser.add_option('--regions', '-r', help="list of regions separted by commas (default all)")
-parser.add_option('--streams', '-s', help="list of streams separated by commas (default all)")
-parser.add_option('--customers', '-c', help="list of customer name fragments separated by commas (default all)")
-parser.add_option('--tags', '-t', help="list of desired output tags separated by commas (default all)")
-options, args = parser.parse_args()
-
-profile = 'saas-OktaFirstResponder'
-roles = '/{}/'.format(profile)
-ui = gimme_aws_creds.ui.CLIUserInterface(argv=[sys.argv[0], '--roles', roles])
-creds = gimme_aws_creds.main.GimmeAWSCreds(ui=ui)
-
-
-# Generate credentials overriding profile name with `okta-<account_id>`
-new_profile = None
-for data in creds.iter_selected_aws_credentials():
-    arn = data['role']['arn']
-    account_id = None
-    for piece in arn.split(':'):
-        if len(piece) == 12 and piece.isdigit():
-            account_id = piece
-            break
-
-    if account_id is None:
-        raise ValueError("Didn't find aws_account_id (12 digits) in {}".format(arn))
-
-    new_profile = 'okta-{}'.format(account_id)
-    data['profile']['name'] = new_profile
-    creds.write_aws_creds_from_data(data)
-
-session = boto3.session.Session(profile_name=new_profile)
-
-regions = options.regions.split(',') if options.regions else [
-    'us-east-1', 'us-west-2',
-    'ap-northeast-1', 'ap-northeast-2', 'ap-south-1', 'ap-southeast-1', 'ap-southeast-2',
-    'ca-central-1', 'sa-east-1','eu-west-1', 'eu-central-1', 'eu-west-2',
-]
-
-
-in_tags = options.tags.split(',') if options.tags else ['Customer', 'Instance', 'Department', 'Owner']
+save_count = 0
 
 
 def load_cache():
@@ -68,17 +20,16 @@ def load_cache():
 
 
 def save_cache():
-    sys.stderr.write("saving\n")
+    # sys.stderr.write("saving\n")
     with open(cache_file, 'w') as f:
         json.dump(cache, f, indent=2)
 
 
-save_count = 0
 def cache_lookup_stream(stream):
     global save_count
     if stream not in cache:
         save_count += 1
-        cache[stream] = tags_for_stream(client, stream)
+        cache[stream] = kinesis.tags_for_stream(client, stream)
 
         if save_count % 20 == 0:
             save_cache()
@@ -86,47 +37,25 @@ def cache_lookup_stream(stream):
     return cache[stream]
 
 
-def backoff(fn):
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        for i in range(5):
-            try:
-                return fn(*args, **kwargs)
-            except Exception:
-                sys.stderr.write(f"Exceeded limit in {fn.__name__}, sleeping {i+1}\n")
-                time.sleep(i+1)
-
-        raise Exception(f"Ran out of retries for {fn.__name__}")
-
-    return wrapper
-
-@backoff
-def tags_for_stream(client, stream):
-    r = client.list_tags_for_stream(StreamName=stream)
-    return {el['Key']: el['Value'] for el in r['Tags']}
-
-
-@backoff
-def fetch_streams(last=None):
-    if last:
-        return client.list_streams(Limit=500, ExclusiveStartStreamName=last)
-    else:
-        return client.list_streams(Limit=500)
-
-
-def streams(client):
-    last = None
-    while True:
-        r = fetch_streams(last)
-        for s in r['StreamNames']:
-            yield s
-            last = s
-
-        if not r['HasMoreStreams']:
-            break
-
-
 if __name__ == '__main__':
+    parser = optparse.OptionParser()
+    parser.add_option('--infile', '-i', help="file with list of control node streams, one per line")
+    parser.add_option('--outfile', '-o', default='-', help="output file with results in CSV format (defaults to stdout)")
+    parser.add_option('--regions', '-r', help="list of regions separted by commas (default all)")
+    parser.add_option('--streams', '-s', help="list of streams separated by commas (default all)")
+    parser.add_option('--customers', '-c', help="list of customer name fragments separated by commas (default all)")
+    parser.add_option('--tags', '-t', help="list of desired output tags separated by commas (default all)")
+    options, args = parser.parse_args()
+
+    regions = options.regions.split(',') if options.regions else [
+        'us-east-1', 'us-west-2',
+        'ap-northeast-1', 'ap-northeast-2', 'ap-south-1', 'ap-southeast-1', 'ap-southeast-2',
+        'ca-central-1', 'sa-east-1', 'eu-west-1', 'eu-central-1', 'eu-west-2',
+    ]
+
+    in_tags = options.tags.split(',') if options.tags else ['Customer', 'Instance', 'Department', 'Owner']
+
+    session = okta_login()
     load_cache()
 
     instreams = []
@@ -144,7 +73,6 @@ if __name__ == '__main__':
         for line in f:
             line2 = line.split()
             if not line2:
-                print('???', line,line2)
                 continue
 
             instreams.append(line2[0])
@@ -172,10 +100,10 @@ if __name__ == '__main__':
     outf.write(f"stream,region,{','.join(in_tags)}\n")
     count = 0
     for region in regions:
-        sys.stderr.write(f"--------------------- {region}\n")
+        # sys.stderr.write(f"--------------------- {region}\n")
 
         client = session.client('kinesis', region_name=region)
-        for stream in streams(client):
+        for stream in kinesis.streams(client):
             cust_match = False
             if has_custs:
                 tags = cache_lookup_stream(stream)
@@ -193,23 +121,16 @@ if __name__ == '__main__':
                 if not has_custs:
                     tags = cache_lookup_stream(stream)
 
-                sys.stderr.write(f"found {stream}\n")
+                # sys.stderr.write(f"found {stream}\n")
                 outf.write(f"{stream},{region},{','.join([str(tags.get(t, 'MISSING')) for t in in_tags])}\n")
                 outf.flush()
                 if instreams:
                     instreams.remove(stream)
 
-                # if incusts and cust_match:
-                #     incusts.remove(cust_match)
-
     for stream in instreams:
         outf.write(f"{stream},{','.join(['MISSING']*len(in_tags))}\n")
-
-    # for cust in incusts:
-    #     outf.write(f"customer={cust},{['MISSING']*len(tags)}\n")
 
     outf.flush()
     outf.close()
 
     save_cache()
-

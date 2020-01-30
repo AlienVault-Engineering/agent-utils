@@ -1,8 +1,6 @@
 #!/bin/bash
 
-set -x
-
-TAG=${PYTHON_VERSION:=latest}
+# set -x
 
 ## This deploy options should be used in bamboo only
 #if [ "$1" = "deploy" ]; then
@@ -16,7 +14,7 @@ TAG=${PYTHON_VERSION:=latest}
 #EOF
 #fi
 
-
+docker-compose build av-agent-utils-test
 
 # You can use -X for a more verbose output (includes coverage lines)
 docker-compose run -w /av-agent-utils \
@@ -30,7 +28,7 @@ if [ "$1" = "deploy" ]; then
                    pyb install_dependencies \
                        package \
                        install \
-                       upload -Pbamboo_build="1.${bamboo_buildNumber}"
+                       upload
 fi
 
 docker-compose down -v --rmi local --remove-orphans
