@@ -8,8 +8,8 @@ services:
     image: av-agent-utils-test:latest
     tty: true
     stdin_open: true
-    volumes:
-      - .:/av-agent-utils
+#    volumes:
+#      - .:/av-agent-utils
     environment:
       - PYPI_USER=$PYPI_USER
       - PYPI_PASS=$PYPI_PASS

@@ -2,8 +2,6 @@
 
 # set -x
 
-echo $PYPI_USER
-
 docker-compose build av-agent-utils-test
 
 # You can use -X for a more verbose output (includes coverage lines)

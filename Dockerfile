@@ -4,4 +4,4 @@ MAINTAINER AlienVault
 ENV RUN_TYPE="tests"
 
 RUN pip install -U --pre pybuilder
-
+COPY . /av-agent-utils
