@@ -2,8 +2,8 @@
 
 import optparse
 import sys
-
-from av_agent_utils import okta_login, sts
+import re
+from av_agent_utils import sts
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
@@ -27,9 +27,25 @@ if __name__ == '__main__':
 
     if results['status'] == 'success':
         r = results['response']
+        for k in ['aws_access_key_id', 'aws_secret_access_key', 'aws_session_token']:
+            print(f"{k}: {results[k]}")
         for k in ['UserId', 'Account', 'Arn']:
             print(f"{k}: {r[k]}")
     else:
         print('Error!')
         print(f'Details: {results["detail"]}')
 
+    # stream_environment = 'prod'
+    # stream_region = 'ap-south-1'
+    # account = r['Account']
+    # stream = f"{stream_environment}-usm-saas-agent-pipeline-ingress-stream-{stream_region}"
+    # resource = f"arn:aws:kinesis:{stream_region}:{account}:stream/{stream}"
+    # r = sts.simulate_policy(
+    #     user_arn=re.sub('federated-', '', r['Arn']),
+    #     action_names=[
+    #         "kinesis:PutRecord",
+    #         "kinesis:PutRecords",
+    #     ],
+    #     resource_arns=[resource],
+    # )
+    # print(r)

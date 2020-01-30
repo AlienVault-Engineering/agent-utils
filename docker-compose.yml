@@ -10,3 +10,6 @@ services:
     stdin_open: true
     volumes:
       - .:/av-agent-utils
+    environment:
+      - PYPI_USER=$PYPI_USER
+      - PYPI_PASS=$PYPI_PASS
